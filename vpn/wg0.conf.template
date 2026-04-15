@@ -1,0 +1,19 @@
+[Interface]
+PrivateKey = # GENERATE_NEW_PRIVATE_KEY_HERE
+Address = 10.0.0.1/24
+ListenPort = 51820
+
+[Peer]
+# Sensor Node
+PublicKey = # SENSOR_PUBLIC_KEY_HERE
+AllowedIPs = 10.0.0.2/32
+
+[Peer]
+# Edge Node  
+PublicKey = # EDGE_PUBLIC_KEY_HERE
+AllowedIPs = 10.0.0.3/32
+
+[Peer]
+# Coordinator Node
+PublicKey = # COORDINATOR_PUBLIC_KEY_HERE
+AllowedIPs = 10.0.0.4/32

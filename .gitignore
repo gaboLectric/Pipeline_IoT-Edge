@@ -1,0 +1,35 @@
+# Rust build artifacts
+target/
+Cargo.lock
+
+# Private keys and certificates
+*.key
+*.pem
+*.p12
+
+# WireGuard configuration
+wg0.conf
+
+# Environment variables
+.env
+
+# Docker
+.dockerignore
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
