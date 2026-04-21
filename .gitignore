@@ -8,7 +8,7 @@
 .env.*.local
 .DS_Store
 
-# 🔐 SEGURIDAD: Ocultar claves y configs sensibles
+# SEGURIDAD: Ocultar claves y configs sensibles
 *.key
 privatekey
 *.conf
