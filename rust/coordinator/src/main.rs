@@ -41,18 +41,28 @@ async fn main() {
     // ---------------------------------------------------------
     tokio::spawn(async move {
         let mut interval = time::interval(Duration::from_secs(3)); // Revisa cada 3 segundos
-        let timeout_ms = 10_000; // Si no hay señales en 10 segundos, se considera caído
-
+        let timeout_ms = 10_000; // 10s sin señales = nodo caído
+    
         loop {
             interval.tick().await;
+    
             let now = current_time_ms();
-            let mut nodes = bg_state.edge_nodes.lock().unwrap();
-
+    
+            let mut nodes = bg_state.edge_nodes
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+    
             for (id, health) in nodes.iter_mut() {
-                if health.is_online && (now - health.last_seen_ms > timeout_ms) {
+                let diff = now.saturating_sub(health.last_seen_ms);
+    
+                if health.is_online && diff > timeout_ms {
                     health.is_online = false;
-                    println!("[ALERTA] Falla detectada en el nodo: {}. No responde desde hace {} ms.", 
-                        id, now - health.last_seen_ms);
+    
+                    println!(
+                        "[ALERTA] Falla detectada en el nodo: {}. No responde desde hace {} ms.",
+                        id,
+                        diff
+                    );
                 }
             }
         }

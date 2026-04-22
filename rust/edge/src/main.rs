@@ -19,7 +19,7 @@ struct AppState {
 async fn main() {
     // Configuración básica (luego lo pasaremos a variables de entorno para Docker)
     let edge_id = "edge-1".to_string();
-    let coordinator_url = "http://10.10.10.4:3000/submit_report".to_string();
+    let coordinator_url = "http://127.0.0.1:3000/submit_report".to_string();
     let port = "4000";
 
     // Inicializamos el estado vacío
