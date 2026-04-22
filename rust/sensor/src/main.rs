@@ -14,6 +14,24 @@ async fn main() {
     println!("📡 Enviando ráfagas de datos a {}", edge_url);
     
     let client = reqwest::Client::new();
+    
+    // Hilo de Heartbeat para el Sensor
+    let sensor_id_hb = sensor_id.clone();
+    let coord_hb_url = "http://127.0.0.1:3000/heartbeat".to_string(); 
+    tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let mut interval = time::interval(Duration::from_secs(2));
+        loop {
+            interval.tick().await;
+            let hb = common::Heartbeat {
+                node_id: sensor_id_hb.clone(),
+                role: "sensor".to_string(),
+                timestamp_ms: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
+            };
+            let _ = client.post(&coord_hb_url).json(&hb).send().await;
+        }
+    });
+    
     // Configuramos el sensor para enviar 2 lecturas por segundo (cada 500ms)
     let mut interval = time::interval(Duration::from_millis(500));
     let mut rng = rand::thread_rng();

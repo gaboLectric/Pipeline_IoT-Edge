@@ -40,22 +40,25 @@ async fn main() {
     // HILO EN SEGUNDO PLANO: El perro guardián (Detector de fallos)
     // ---------------------------------------------------------
     tokio::spawn(async move {
-        let mut interval = time::interval(Duration::from_secs(3)); // Revisa cada 3 segundos
-        let timeout_ms = 10_000; // Si no hay señales en 10 segundos, se considera caído
-
+        let mut interval = time::interval(Duration::from_secs(2)); // Revisa cada 2 segundos
+        let timeout_ms = 10_000; // 10s sin señales = nodo caído
+    
         loop {
-            interval.tick().await;
-            let now = current_time_ms();
-            let mut nodes = bg_state.edge_nodes.lock().unwrap();
+        interval.tick().await;
+        let now = current_time_ms();
+        let mut nodes = bg_state.edge_nodes.lock().unwrap();
 
-            for (id, health) in nodes.iter_mut() {
-                if health.is_online && (now - health.last_seen_ms > timeout_ms) {
+        for (id, health) in nodes.iter_mut() {
+            // Solo alertar si realmente ha pasado el tiempo Y el nodo estaba online
+            if health.is_online {
+                let diff = now.saturating_sub(health.last_seen_ms);
+                if diff > timeout_ms {
                     health.is_online = false;
-                    println!("[ALERTA] Falla detectada en el nodo: {}. No responde desde hace {} ms.", 
-                        id, now - health.last_seen_ms);
+                    println!("[ALERTA] Falla detectada en {}. Sin señal por {} ms.", id, diff);
                 }
             }
         }
+    }
     });
 
     // ---------------------------------------------------------
@@ -85,6 +88,7 @@ async fn receive_report(
     
     // Lógica de reconexión
     if let Some(health) = nodes.get_mut(&report.edge_id) {
+        health.last_seen_ms = now;
         if !health.is_online {
             println!("[RECUPERACIÓN] El nodo {} ha vuelto a conectarse tras una falla.", report.edge_id);
             health.is_online = true;
@@ -115,9 +119,21 @@ async fn receive_heartbeat(
     let now = current_time_ms();
     let mut nodes = state.edge_nodes.lock().unwrap();
     
+    // NUEVA LÓGICA: Si el nodo no existe, lo creamos (Auto-registro)
     if let Some(health) = nodes.get_mut(&hb.node_id) {
         health.last_seen_ms = now;
+        if !health.is_online {
+            health.is_online = true;
+            println!("[RECUPERACIÓN] Nodo {} volvió vía heartbeat.", hb.node_id);
+        }
+    } else {
+        println!("[REGISTRO] Nuevo nodo {} detectado vía heartbeat.", hb.node_id);
+        nodes.insert(hb.node_id.clone(), NodeHealth { 
+            last_seen_ms: now, 
+            is_online: true 
+        });
     }
+    
     Json("Ack")
 }
 
