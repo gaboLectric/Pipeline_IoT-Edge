@@ -4,7 +4,7 @@ use axum::{
 };
 use common::{SensorReading, EdgeReport};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
 use tokio::time;
 
 // Este es el estado compartido en memoria.
@@ -37,47 +37,83 @@ async fn main() {
     // ---------------------------------------------------------
     tokio::spawn(async move {
         let client = reqwest::Client::new();
-        // Configuramos el ciclo para ejecutarse cada 5 segundos
-        let mut interval = time::interval(Duration::from_secs(5));
+        // Ajustado a 2 segundos para evitar "flapping"
+        let mut interval = time::interval(Duration::from_secs(2));
 
         loop {
+            // 1. ESPERAR al siguiente ciclo
             interval.tick().await;
             
-            // 1. Extraer y limpiar las lecturas (rápido para no bloquear el mutex)
+            // 2. OBTENER el tiempo actual JUSTO después del tick para mayor precisión
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+            
+            // 3. Extraer y limpiar las lecturas
             let readings_to_process: Vec<SensorReading> = {
                 let mut lock = bg_state.readings.lock().unwrap();
                 let data = lock.clone();
-                lock.clear(); // Vaciamos el búfer después de copiar
+                lock.clear(); 
                 data
             };
 
             if readings_to_process.is_empty() {
-                continue; // Si no hay datos de sensores, no enviamos reporte
+                continue; 
             }
 
-            // 2. Procesamiento local (Promedio Móvil y Anomalías)
+            // 4. Procesamiento local (Promedio y Anomalías) [cite: 34, 119]
             let count = readings_to_process.len() as u32;
             let sum: f64 = readings_to_process.iter().map(|r| r.value).sum();
             let window_avg = sum / count as f64;
-            
-            // Lógica simple de anomalía (ej: Temperatura mayor a 80 grados)
             let anomaly_detected = window_avg > 80.0;
 
-            // 3. Armar el reporte usando la estructura de `common`
+            // 5. CÁLCULO DE LATENCIA E2E 
+            let total_latency: u64 = readings_to_process.iter()
+                .map(|r| now.saturating_sub(r.timestamp_ms))
+                .sum();
+            let avg_latency = total_latency / count as u64;
+
+            // 6. Armar el reporte con la latencia REAL 
             let report = EdgeReport {
                 edge_id: bg_state.edge_id.clone(),
                 window_avg,
                 anomaly_detected,
                 sample_count: count,
-                latency_ms: 0, // Aquí luego inyectaremos la medición de red
+                latency_ms: avg_latency as u64, // <--- CAMBIO: Ahora sí enviamos el cálculo
             };
 
-            println!("[Edge] Procesadas {} lecturas. Promedio: {:.2}. Anomalía: {}. Enviando a coordinador...", 
-                count, window_avg, anomaly_detected);
+            println!("[Edge] Procesadas {} lecturas. Latencia prom: {}ms. Enviando...", 
+                count, avg_latency);
 
-            // 4. Enviar vía Reqwest
+            // 7. Enviar vía Reqwest
             if let Err(e) = client.post(&bg_state.coordinator_url).json(&report).send().await {
                 eprintln!("[Edge] Fallo al contactar al coordinador: {}", e);
+            }
+        }
+    });
+
+    // ---------------------------------------------------------
+    // HILO DE HEARTBEAT: Avisa al coordinador que el Edge está vivo
+    // ---------------------------------------------------------
+    let hb_state = shared_state.clone();
+    tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let mut interval = time::interval(Duration::from_secs(3)); // Latido cada 3 segundos
+        let hb_url = format!("{}/heartbeat", hb_state.coordinator_url.replace("/submit_report", ""));
+
+        loop {
+            interval.tick().await;
+
+            let heartbeat = common::Heartbeat {
+                node_id: hb_state.edge_id.clone(),
+                role: "edge".to_string(),
+                timestamp_ms: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis() as u64,
+            };
+
+            match client.post(&hb_url).json(&heartbeat).send().await {
+                Ok(_) => {}, // Éxito silencioso para no llenar el log
+                Err(e) => eprintln!("[Edge] ❤️ Heartbeat fallido: {}", e),
             }
         }
     });
