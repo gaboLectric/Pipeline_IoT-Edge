@@ -1,49 +1,31 @@
-version: '3.8'
-
 services:
-  sensor:
-    build:
-      context: .
-      dockerfile: docker/sensor/Dockerfile
-    container_name: iot-sensor
-    networks:
-      - iot-network
-    environment:
-      - RUST_LOG=info
-    volumes:
-      - ./rust/sensor:/app
-    working_dir: /app
-
-  edge:
-    build:
-      context: .
-      dockerfile: docker/edge/Dockerfile
-    container_name: edge-processor
-    networks:
-      - iot-network
-    environment:
-      - RUST_LOG=info
-    volumes:
-      - ./rust/edge:/app
-    working_dir: /app
-    depends_on:
-      - sensor
-
   coordinator:
     build:
       context: .
-      dockerfile: docker/coordinator/Dockerfile
-    container_name: coordinator
-    networks:
-      - iot-network
-    environment:
-      - RUST_LOG=info
-    volumes:
-      - ./rust/coordinator:/app
-    working_dir: /app
-    depends_on:
-      - edge
+      dockerfile: Dockerfile
+    container_name: iot_coordinator
+    network_mode: "host"
+    command: ["./coordinator"]
+    restart: unless-stopped
 
-networks:
-  iot-network:
-    driver: bridge
+  edge-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iot_edge_1
+    network_mode: "host"
+    command: ["./edge"]
+    restart: unless-stopped
+    depends_on:
+      - coordinator
+
+  sensor-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iot_sensor_1
+    network_mode: "host"
+    command: ["./sensor"]
+    restart: unless-stopped
+    depends_on:
+      - edge-1
