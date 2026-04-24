@@ -10,9 +10,14 @@ services:
       - iot-network
     environment:
       - RUST_LOG=info
+      - SENSOR_ID=sensor-temp-1
+      - EDGE_URL=http://edge-processor:4000/reading
+      - COORD_HB_URL=http://coordinator:3000/heartbeat
     volumes:
       - ./rust/sensor:/app
     working_dir: /app
+    depends_on:
+      - edge
 
   edge:
     build:
@@ -27,7 +32,7 @@ services:
       - ./rust/edge:/app
     working_dir: /app
     depends_on:
-      - sensor
+      - coordinator
 
   coordinator:
     build:
@@ -41,8 +46,6 @@ services:
     volumes:
       - ./rust/coordinator:/app
     working_dir: /app
-    depends_on:
-      - edge
 
 networks:
   iot-network:
