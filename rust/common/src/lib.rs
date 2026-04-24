@@ -17,6 +17,7 @@ pub struct EdgeReport {
     pub anomaly_detected: bool,
     pub sample_count: u32,
     pub latency_ms: u64,
+    pub sequence_number: u64,
 }
 
 // Estado general que mantendrá el Coordinator en memoria
@@ -26,6 +27,11 @@ pub struct CoordStatus {
     pub total_readings: u64,
     pub anomalies_last_min: u32,
     pub uptime_s: u64,
+    pub throughput_msg_s: f64,
+    pub anomaly_rate_pct: f64,
+    pub latency_p50_ms: u64,
+    pub latency_p99_ms: u64,
+    pub lost_messages: u64,
 }
 
 // Señal de vida para la tolerancia a fallos (vital para las pruebas con tc netem)
