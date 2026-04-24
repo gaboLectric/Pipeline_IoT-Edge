@@ -1,51 +1,55 @@
-# Archivos compilados de Rust
+# Rust build artifacts
+target/
 /rust/target/
+Cargo.lock
 **/*.rs.bk
 
-# Archivos de entorno y SO
-.env
-.env.local
-.env.*.local
-.DS_Store
-
-# SEGURIDAD: Ocultar claves y configs sensibles
+# Private keys and certificates
 *.key
+*.pem
+*.p12
 privatekey
-*.conf
-!VPN/configuraciones_sanitizadas/*.conf
-!VPN/hub_wg0_real.conf
-/etc/wireguard/*.conf
 /etc/wireguard/privatekey
 /etc/wireguard/publickey
 
-# Logs y archivos temporales
-*.log
-logs/
-tmp/
-*.pid
-*.cache
+# WireGuard configuration
+*.conf
+!vpn/*.template
+!vpn/configuraciones_sanitizadas/*.conf
 
-# IDE y editores
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Docker
+.dockerignore
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Docker
-.dockerignore
+# OS files
+.DS_Store
+Thumbs.db
 
-# Backup y archivos viejos
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.pid
+*.cache
 *.backup
 *.old
 *.bak
 *.orig
-*.temp
 
 # Node.js (si se usa)
 node_modules/
 package-lock.json
-
-# Sistema
-.DS_Store
-Thumbs.db

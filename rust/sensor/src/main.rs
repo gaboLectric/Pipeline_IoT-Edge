@@ -5,15 +5,32 @@ use tokio::time;
 
 #[tokio::main]
 async fn main() {
-    let sensor_id = "sensor-temp-1".to_string();
-    
-    // Para las pruebas locales, apuntaremos al Edge que correrá en nuestra misma máquina
-    let edge_url = "http://127.0.0.1:4000/reading".to_string();
+    // Usamos variables de entorno para que Docker Compose pueda inyectar las IPs reales
+    let sensor_id = std::env::var("SENSOR_ID").unwrap_or_else(|_| "sensor-temp-1".to_string());
+    let edge_url = std::env::var("EDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:4000/reading".to_string());
+    let coord_hb_url = std::env::var("COORD_HB_URL").unwrap_or_else(|_| "http://127.0.0.1:3000/heartbeat".to_string());
     
     println!("🌡️ Iniciando {}...", sensor_id);
     println!("📡 Enviando ráfagas de datos a {}", edge_url);
     
     let client = reqwest::Client::new();
+    
+    // Hilo de Heartbeat para el Sensor
+    let sensor_id_hb = sensor_id.clone();
+    tokio::spawn(async move {
+        let client = reqwest::Client::new();
+        let mut interval = time::interval(Duration::from_secs(2));
+        loop {
+            interval.tick().await;
+            let hb = common::Heartbeat {
+                node_id: sensor_id_hb.clone(),
+                role: "sensor".to_string(),
+                timestamp_ms: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
+            };
+            let _ = client.post(&coord_hb_url).json(&hb).send().await;
+        }
+    });
+    
     // Configuramos el sensor para enviar 2 lecturas por segundo (cada 500ms)
     let mut interval = time::interval(Duration::from_millis(500));
     let mut rng = rand::thread_rng();
