@@ -5,10 +5,10 @@ use tokio::time;
 
 #[tokio::main]
 async fn main() {
-    let sensor_id = "sensor-temp-1".to_string();
-    
-    // Para las pruebas locales, apuntaremos al Edge que correrá en nuestra misma máquina
-    let edge_url = "http://127.0.0.1:4000/reading".to_string();
+    // Usamos variables de entorno para que Docker Compose pueda inyectar las IPs reales
+    let sensor_id = std::env::var("SENSOR_ID").unwrap_or_else(|_| "sensor-temp-1".to_string());
+    let edge_url = std::env::var("EDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:4000/reading".to_string());
+    let coord_hb_url = std::env::var("COORD_HB_URL").unwrap_or_else(|_| "http://127.0.0.1:3000/heartbeat".to_string());
     
     println!("🌡️ Iniciando {}...", sensor_id);
     println!("📡 Enviando ráfagas de datos a {}", edge_url);
@@ -17,7 +17,6 @@ async fn main() {
     
     // Hilo de Heartbeat para el Sensor
     let sensor_id_hb = sensor_id.clone();
-    let coord_hb_url = "http://127.0.0.1:3000/heartbeat".to_string(); 
     tokio::spawn(async move {
         let client = reqwest::Client::new();
         let mut interval = time::interval(Duration::from_secs(2));

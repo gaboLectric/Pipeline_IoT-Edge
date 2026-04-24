@@ -19,7 +19,7 @@ struct AppState {
 async fn main() {
     // Configuración básica (luego lo pasaremos a variables de entorno para Docker)
     let edge_id = "edge-1".to_string();
-    let coordinator_url = "http://127.0.0.1:3000/submit_report".to_string();
+    let coordinator_url = "http://10.10.10.1:3000/submit_report".to_string();
     let port = "4000";
 
     // Inicializamos el estado vacío
@@ -39,7 +39,6 @@ async fn main() {
         let client = reqwest::Client::new();
         // Ajustado a 2 segundos para evitar "flapping"
         let mut interval = time::interval(Duration::from_secs(2));
-        let mut seq_num: u64 = 0; // <-- Inicializamos el contador de secuencia
 
         loop {
             // 1. ESPERAR al siguiente ciclo
@@ -60,9 +59,7 @@ async fn main() {
                 continue; 
             }
 
-            seq_num += 1; // <-- Incrementamos en cada envío exitoso
-
-            // 4. Procesamiento local (Promedio y Anomalías)
+            // 4. Procesamiento local (Promedio y Anomalías) [cite: 34, 119]
             let count = readings_to_process.len() as u32;
             let sum: f64 = readings_to_process.iter().map(|r| r.value).sum();
             let window_avg = sum / count as f64;
@@ -80,8 +77,7 @@ async fn main() {
                 window_avg,
                 anomaly_detected,
                 sample_count: count,
-                latency_ms: avg_latency as u64,
-                sequence_number: seq_num, // <-- Adjuntamos la secuencia
+                latency_ms: avg_latency as u64, // <--- CAMBIO: Ahora sí enviamos el cálculo
             };
 
             println!("[Edge] Procesadas {} lecturas. Latencia prom: {}ms. Enviando...", 

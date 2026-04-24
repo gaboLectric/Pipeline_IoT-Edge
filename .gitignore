@@ -1,17 +1,26 @@
 # Rust build artifacts
 target/
+/rust/target/
 Cargo.lock
+**/*.rs.bk
 
 # Private keys and certificates
 *.key
 *.pem
 *.p12
+privatekey
+/etc/wireguard/privatekey
+/etc/wireguard/publickey
 
 # WireGuard configuration
-wg0.conf
+*.conf
+!vpn/*.template
+!vpn/configuraciones_sanitizadas/*.conf
 
 # Environment variables
 .env
+.env.local
+.env.*.local
 
 # Docker
 .dockerignore
@@ -29,7 +38,18 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
 
 # Temporary files
 tmp/
 temp/
+*.pid
+*.cache
+*.backup
+*.old
+*.bak
+*.orig
+
+# Node.js (si se usa)
+node_modules/
+package-lock.json
