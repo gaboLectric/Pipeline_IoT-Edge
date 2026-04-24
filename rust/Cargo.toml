@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "common",
+    "sensor",
+    "edge",
+    "coordinator"
+]
+resolver = "2"
