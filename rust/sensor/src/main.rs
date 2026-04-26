@@ -12,6 +12,7 @@ async fn main() {
     
     println!("🌡️ Iniciando {}...", sensor_id);
     println!("📡 Enviando ráfagas de datos a {}", edge_url);
+    println!("❤️ Heartbeat configurado hacia {}", coord_hb_url);
     
     let client = reqwest::Client::new();
     

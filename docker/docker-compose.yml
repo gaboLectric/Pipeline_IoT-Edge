@@ -28,6 +28,9 @@ services:
       - iot-network
     environment:
       - RUST_LOG=info
+      - EDGE_ID=edge-node-1
+      - COORDINATOR_URL=http://coordinator:3000/submit_report
+      - COORD_HB_URL=http://coordinator:3000/heartbeat
     volumes:
       - ./rust/edge:/app
     working_dir: /app
