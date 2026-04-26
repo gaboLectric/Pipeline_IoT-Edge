@@ -167,6 +167,8 @@ async fn main() {
         let mut interval = time::interval(Duration::from_secs(3)); // Latido cada 3 segundos
         let hb_url = hb_state.coord_hb_url.clone();
 
+        println!("❤️ Heartbeat configurado hacia {}", hb_url);
+
         loop {
             interval.tick().await;
 
