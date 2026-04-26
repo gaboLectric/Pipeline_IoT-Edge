@@ -14,6 +14,7 @@ struct AppState {
     readings: Arc<Mutex<Vec<SensorReading>>>,
     edge_id: String,
     coordinator_url: String,
+    coord_hb_url: String,
     sequence_counter: Arc<AtomicU64>,
 }
 
@@ -22,6 +23,7 @@ async fn main() {
     // Configuración con variables de entorno para Docker
     let edge_id = std::env::var("EDGE_ID").unwrap_or_else(|_| "edge-1".to_string());
     let coordinator_url = std::env::var("COORDINATOR_URL").unwrap_or_else(|_| "http://10.10.10.1:3000/submit_report".to_string());
+    let coord_hb_url = std::env::var("COORD_HB_URL").unwrap_or_else(|_| "http://10.10.10.1:3000/heartbeat".to_string());
     let port = std::env::var("PORT").unwrap_or_else(|_| "4000".to_string());
 
     // Inicializamos el estado vacío
@@ -29,6 +31,7 @@ async fn main() {
         readings: Arc::new(Mutex::new(Vec::new())),
         edge_id: edge_id.clone(),
         coordinator_url: coordinator_url.clone(),
+        coord_hb_url: coord_hb_url.clone(),
         sequence_counter: Arc::new(AtomicU64::new(0)),
     });
 
@@ -162,7 +165,7 @@ async fn main() {
     tokio::spawn(async move {
         let client = reqwest::Client::new();
         let mut interval = time::interval(Duration::from_secs(3)); // Latido cada 3 segundos
-        let hb_url = format!("{}/heartbeat", hb_state.coordinator_url.replace("/submit_report", ""));
+        let hb_url = hb_state.coord_hb_url.clone();
 
         loop {
             interval.tick().await;
