@@ -19,10 +19,10 @@ struct AppState {
 
 #[tokio::main]
 async fn main() {
-    // Configuración básica (luego lo pasaremos a variables de entorno para Docker)
-    let edge_id = "edge-1".to_string();
-    let coordinator_url = "http://10.10.10.1:3000/submit_report".to_string();
-    let port = "4000";
+    // Configuración con variables de entorno para Docker
+    let edge_id = std::env::var("EDGE_ID").unwrap_or_else(|_| "edge-1".to_string());
+    let coordinator_url = std::env::var("COORDINATOR_URL").unwrap_or_else(|_| "http://10.10.10.1:3000/submit_report".to_string());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "4000".to_string());
 
     // Inicializamos el estado vacío
     let shared_state = Arc::new(AppState {
@@ -50,12 +50,15 @@ async fn main() {
             // 2. OBTENER el tiempo actual JUSTO después del tick para mayor precisión
             let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
             
-            // 3. Extraer y limpiar las lecturas
+            // 3. Extraer solo múltiplos de 10 lecturas (dejando el residuo para el siguiente ciclo)
             let readings_to_process: Vec<SensorReading> = {
                 let mut lock = bg_state.readings.lock().unwrap();
-                let data = lock.clone();
-                lock.clear(); 
-                data
+                let processable = lock.len() - (lock.len() % 10);
+                if processable > 0 {
+                    lock.drain(0..processable).collect()
+                } else {
+                    Vec::new()
+                }
             };
 
             if readings_to_process.is_empty() {
