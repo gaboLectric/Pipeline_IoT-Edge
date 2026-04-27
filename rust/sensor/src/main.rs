@@ -6,9 +6,9 @@ use tokio::time;
 #[tokio::main]
 async fn main() {
     // Usamos variables de entorno para que Docker Compose pueda inyectar las IPs reales
-    let sensor_id = std::env::var("SENSOR_ID").unwrap_or_else(|_| "sensor-temp-1".to_string());
-    let edge_url = std::env::var("EDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:4000/reading".to_string());
-    let coord_hb_url = std::env::var("COORD_HB_URL").unwrap_or_else(|_| "http://127.0.0.1:3000/heartbeat".to_string());
+    let sensor_id = std::env::var("SENSOR_ID").expect("FALTA VARIABLE: SENSOR_ID");
+    let edge_url = std::env::var("EDGE_URL").expect("FALTA VARIABLE: EDGE_URL");
+    let coord_hb_url = std::env::var("COORD_HB_URL").expect("FALTA VARIABLE: COORD_HB_URL");
     
     println!("🌡️ Iniciando {}...", sensor_id);
     println!("📡 Enviando ráfagas de datos a {}", edge_url);
