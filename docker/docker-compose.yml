@@ -16,6 +16,8 @@ services:
       - COORD_HB_URL=http://coordinator:3000/heartbeat
     depends_on:
       - edge
+    cap_add:
+      - NET_ADMIN
 
   edge:
     build:
@@ -32,6 +34,8 @@ services:
       - COORD_HB_URL=http://coordinator:3000/heartbeat
     depends_on:
       - coordinator
+    cap_add:
+      - NET_ADMIN
 
   coordinator:
     build:
@@ -45,6 +49,8 @@ services:
     environment:
       - RUST_LOG=info
       - PORT=3000
+    cap_add:
+      - NET_ADMIN
 
 networks:
   iot-network:
