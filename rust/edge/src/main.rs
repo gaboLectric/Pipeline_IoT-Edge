@@ -21,9 +21,9 @@ struct AppState {
 #[tokio::main]
 async fn main() {
     // Configuración con variables de entorno para Docker
-    let edge_id = std::env::var("EDGE_ID").unwrap_or_else(|_| "edge-1".to_string());
-    let coordinator_url = std::env::var("COORDINATOR_URL").unwrap_or_else(|_| "http://10.10.10.1:3000/submit_report".to_string());
-    let coord_hb_url = std::env::var("COORD_HB_URL").unwrap_or_else(|_| "http://10.10.10.1:3000/heartbeat".to_string());
+    let edge_id = std::env::var("EDGE_ID").expect("FALTA VARIABLE: EDGE_ID");
+    let coordinator_url = std::env::var("COORDINATOR_URL").expect("FALTA VARIABLE: COORDINATOR_URL");
+    let coord_hb_url = std::env::var("COORD_HB_URL").expect("FALTA VARIABLE: COORD_HB_URL");
     let port = std::env::var("PORT").unwrap_or_else(|_| "4000".to_string());
 
     // Inicializamos el estado vacío
