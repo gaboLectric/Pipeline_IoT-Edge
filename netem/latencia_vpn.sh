@@ -11,10 +11,16 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Configuración de latencia
-LATENCY="80ms"
-JITTER="20ms"
+# Configuración de latencia - VALORES ABRUPTOS para pruebas visibles
+# 2 segundos de latencia base + 500ms de jitter
+# Esto hace que heartbeats lleguen con retraso MUY notable y se vea claramente en el Coordinator
+LATENCY="2000ms"
+JITTER="500ms"
 DISTRIBUTION="normal"
+
+# Nota: Con 2s+500ms de jitter, los heartbeats tardarán ~2-2.5s en llegar
+# El Coordinator mostrará latencias de 2000-2500ms, claramente visibles
+# El timeout del Coordinator es 10s, así que esto NO lo marca offline
 
 # Detectar interfaz si no se proporciona
 if [ -z "$1" ]; then
