@@ -16,6 +16,12 @@ echo -e "${BLUE}  Despliegue: Edge + Sensores           ${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
+# Cargar variables desde .env si existe en la carpeta docker
+if [ -f "docker/.env" ]; then
+    echo -e "${GREEN}✓ Cargando configuración desde docker/.env${NC}"
+    export $(grep -v '^#' docker/.env | xargs)
+fi
+
 # Variables requeridas
 if [ -z "$EDGE_ID" ]; then
     echo -e "${YELLOW}Variable EDGE_ID no definida.${NC}"
@@ -83,6 +89,7 @@ docker-compose -f docker/docker-compose.edge.yml down 2>/dev/null || true
 # Construir y levantar
 echo -e "${YELLOW}Construyendo e iniciando Edge + Sensores...${NC}"
 cd docker
+# Docker Compose cargará automáticamente el archivo .env si existe
 docker-compose -f docker-compose.edge.yml up --build -d
 
 echo ""
