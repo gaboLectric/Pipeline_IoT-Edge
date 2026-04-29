@@ -8,6 +8,29 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 
+// Colores ANSI por Edge (para distinguir en capturas de pantalla)
+const EDGE_COLORS: [&str; 10] = [
+    "\x1b[36m", // Cyan
+    "\x1b[33m", // Amarillo
+    "\x1b[35m", // Magenta
+    "\x1b[32m", // Verde
+    "\x1b[34m", // Azul
+    "\x1b[91m", // Rojo claro
+    "\x1b[96m", // Cyan claro
+    "\x1b[93m", // Amarillo claro
+    "\x1b[95m", // Magenta claro
+    "\x1b[92m", // Verde claro
+];
+const NC: &str = "\x1b[0m"; // Reset
+
+fn edge_color(edge_id: &str) -> &'static str {
+    let mut hash: u64 = 0;
+    for b in edge_id.bytes() {
+        hash = hash.wrapping_mul(31).wrapping_add(b as u64);
+    }
+    EDGE_COLORS[(hash % EDGE_COLORS.len() as u64) as usize]
+}
+
 // Estructura interna para rastrear la salud de cada Edge
 #[derive(Debug, Clone)]
 struct NodeHealth {
@@ -59,7 +82,7 @@ async fn main() {
                 let diff = now.saturating_sub(health.last_seen_ms);
                 if diff > timeout_ms {
                     health.is_online = false;
-                    println!("[ALERTA] Falla detectada en {}. Sin señal por {} ms.", id, diff);
+                    println!("{}[ALERTA] Falla detectada en {}. Sin señal por {} ms.{}", edge_color(id), id, diff, NC);
                 }
             }
         }
@@ -95,7 +118,7 @@ async fn receive_report(
     if let Some(health) = nodes.get_mut(&report.edge_id) {
         health.last_seen_ms = now;
         if !health.is_online {
-            println!("[RECUPERACIÓN] El nodo {} ha vuelto a conectarse.", report.edge_id);
+            println!("{}[RECUPERACIÓN] El nodo {} ha vuelto a conectarse.{}", edge_color(&report.edge_id), report.edge_id, NC);
             health.is_online = true;
         }
         
@@ -103,13 +126,13 @@ async fn receive_report(
         if report.sequence_number > health.expected_seq && health.expected_seq > 0 {
             let lost = report.sequence_number - health.expected_seq;
             *state.lost_messages.lock().unwrap() += lost;
-            println!("[ADVERTENCIA] Se perdieron {} mensajes del nodo {}", lost, report.edge_id);
+            println!("{}[ADVERTENCIA] Se perdieron {} mensajes del nodo {}{}", edge_color(&report.edge_id), lost, report.edge_id, NC);
         }
         // Actualizamos la siguiente secuencia esperada
         health.expected_seq = report.sequence_number + 1;
 
     } else {
-        println!("Nuevo nodo Edge registrado: {}", report.edge_id);
+        println!("{}[REGISTRO] Nuevo nodo Edge registrado: {}{}", edge_color(&report.edge_id), report.edge_id, NC);
         nodes.insert(report.edge_id.clone(), NodeHealth { 
             last_seen_ms: now, 
             is_online: true,
@@ -128,11 +151,12 @@ async fn receive_report(
 
     // Actualizar métricas globales
     *state.total_readings.lock().unwrap() += report.sample_count as u64;
+    let net_latency = now.saturating_sub(report.timestamp_ms);
     if report.anomaly_detected {
         *state.total_anomalies.lock().unwrap() += 1;
-        println!("[COORDINADOR] Reporte de anomalía recibido desde {} - Latencia red: {}ms", report.edge_id, now.saturating_sub(report.timestamp_ms));
+        println!("{}[ANOMALÍA] {} - Latencia red: {}ms{}", edge_color(&report.edge_id), report.edge_id, net_latency, NC);
     } else {
-        println!("[REPORTE] Recibido de {} ({} muestras) - Latencia red: {}ms", report.edge_id, report.sample_count, now.saturating_sub(report.timestamp_ms));
+        println!("{}[REPORTE] {} ({} muestras) - Latencia red: {}ms{}", edge_color(&report.edge_id), report.edge_id, report.sample_count, net_latency, NC);
     }
 
     Json("Reporte procesado exitosamente")
@@ -154,13 +178,12 @@ async fn receive_heartbeat(
         health.last_seen_ms = now;
         if !health.is_online {
             health.is_online = true;
-            println!("[RECUPERACIÓN] Nodo {} volvió vía heartbeat (latencia: {}ms).", hb.node_id, heartbeat_latency);
+            println!("{}[RECUPERACIÓN] {} volvió vía heartbeat (latencia: {}ms){}", edge_color(&hb.node_id), hb.node_id, heartbeat_latency, NC);
         } else {
-            // Mostrar latencia del heartbeat en cada recepción
-            println!("[HEARTBEAT] Recibido de {} - Latencia: {}ms", hb.node_id, heartbeat_latency);
+            println!("{}[HEARTBEAT] {} - Latencia: {}ms{}", edge_color(&hb.node_id), hb.node_id, heartbeat_latency, NC);
         }
     } else {
-        println!("[REGISTRO] Nuevo nodo {} detectado vía heartbeat (latencia: {}ms).", hb.node_id, heartbeat_latency);
+        println!("{}[REGISTRO] Nuevo nodo {} detectado vía heartbeat (latencia: {}ms){}", edge_color(&hb.node_id), hb.node_id, heartbeat_latency, NC);
         nodes.insert(hb.node_id.clone(), NodeHealth { 
             last_seen_ms: now, 
             is_online: true,
