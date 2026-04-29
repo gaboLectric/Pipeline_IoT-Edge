@@ -172,17 +172,26 @@ async fn main() {
         loop {
             interval.tick().await;
 
+            let send_time = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis() as u64;
+
             let heartbeat = common::Heartbeat {
                 node_id: hb_state.edge_id.clone(),
                 role: "edge".to_string(),
-                timestamp_ms: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64,
+                timestamp_ms: send_time,
             };
 
             match client.post(&hb_url).json(&heartbeat).send().await {
-                Ok(_) => {}, // Éxito silencioso para no llenar el log
+                Ok(response) => {
+                    let rtt = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64 - send_time;
+                    println!("[Edge] ❤️ Heartbeat OK - RTT: {}ms", rtt);
+                    let _ = response;
+                },
                 Err(e) => eprintln!("[Edge] ❤️ Heartbeat fallido: {}", e),
             }
         }
