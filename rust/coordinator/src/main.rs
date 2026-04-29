@@ -152,11 +152,17 @@ async fn receive_report(
     // Actualizar métricas globales
     *state.total_readings.lock().unwrap() += report.sample_count as u64;
     let net_latency = now.saturating_sub(report.timestamp_ms);
+    let active_edges = state.edge_nodes.lock().unwrap().len();
+    
     if report.anomaly_detected {
         *state.total_anomalies.lock().unwrap() += 1;
-        println!("{}[ANOMALÍA] {} - Latencia red: {}ms{}", edge_color(&report.edge_id), report.edge_id, net_latency, NC);
+        println!("{}[ANOMALÍA] {} | Muestras: {} | Promedio: {:.1}°C | Latencia red: {}ms | Seq: {} | Edges activos: {}{}", 
+            edge_color(&report.edge_id), report.edge_id, report.sample_count, report.window_avg, 
+            net_latency, report.sequence_number, active_edges, NC);
     } else {
-        println!("{}[REPORTE] {} ({} muestras) - Latencia red: {}ms{}", edge_color(&report.edge_id), report.edge_id, report.sample_count, net_latency, NC);
+        println!("{}[REPORTE] {} | Muestras: {} | Promedio: {:.1}°C | Latencia red: {}ms | Seq: {} | Edges activos: {}{}", 
+            edge_color(&report.edge_id), report.edge_id, report.sample_count, report.window_avg, 
+            net_latency, report.sequence_number, active_edges, NC);
     }
 
     Json("Reporte procesado exitosamente")
@@ -178,12 +184,17 @@ async fn receive_heartbeat(
         health.last_seen_ms = now;
         if !health.is_online {
             health.is_online = true;
-            println!("{}[RECUPERACIÓN] {} volvió vía heartbeat (latencia: {}ms){}", edge_color(&hb.node_id), hb.node_id, heartbeat_latency, NC);
+            let offline_duration = now.saturating_sub(health.last_seen_ms);
+            println!("{}[RECUPERACIÓN] {} | Estuvo offline: {}ms | Latencia red: {}ms | Rol: {} | Estado: ONLINE{}", 
+                edge_color(&hb.node_id), hb.node_id, offline_duration, heartbeat_latency, hb.role, NC);
         } else {
-            println!("{}[HEARTBEAT] {} - Latencia: {}ms{}", edge_color(&hb.node_id), hb.node_id, heartbeat_latency, NC);
+            println!("{}[HEARTBEAT] {} | Latencia red: {}ms | Rol: {} | Estado: ACTIVO{}", 
+                edge_color(&hb.node_id), hb.node_id, heartbeat_latency, hb.role, NC);
         }
     } else {
-        println!("{}[REGISTRO] Nuevo nodo {} detectado vía heartbeat (latencia: {}ms){}", edge_color(&hb.node_id), hb.node_id, heartbeat_latency, NC);
+        let total_nodes = nodes.len() + 1;
+        println!("{}[REGISTRO] Nuevo nodo: {} | Latencia inicial: {}ms | Rol: {} | Total de nodos en cluster: {}{}", 
+            edge_color(&hb.node_id), hb.node_id, heartbeat_latency, hb.role, total_nodes, NC);
         nodes.insert(hb.node_id.clone(), NodeHealth { 
             last_seen_ms: now, 
             is_online: true,
