@@ -1,3 +1,15 @@
+# ⚠️ ARCHIVO LEGADO - SOLO PARA PRUEBAS LOCALES
+#
+# Este docker-compose.yml es útil para desarrollo y pruebas locales
+# donde se ejecutan todos los servicios (sensor, edge, coordinator)
+# en una sola máquina sin VPN.
+#
+# Para el CLUSTER DISTRIBUIDO real, usar:
+#   - docker-compose.coordinator.yml (solo en el Hub)
+#   - docker-compose.edge.yml (en cada máquina del equipo)
+#
+# Ver docs/CLUSTER_ROADMAP.md para más información.
+
 version: '3.8'
 
 services:
@@ -11,9 +23,8 @@ services:
     environment:
       - RUST_LOG=info
       - SENSOR_ID=sensor-temp-1
-      # Inyección de dependencias estricta sin IPs hardcodeadas
+      # Los sensores solo envían datos a su Edge local
       - EDGE_URL=http://edge:4000/reading
-      - COORD_HB_URL=http://coordinator:3000/heartbeat
     depends_on:
       - edge
     cap_add:
