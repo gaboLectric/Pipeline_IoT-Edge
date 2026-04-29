@@ -146,15 +146,21 @@ async fn receive_heartbeat(
     let now = current_time_ms();
     let mut nodes = state.edge_nodes.lock().unwrap();
     
+    // Calcular latencia del heartbeat: tiempo actual - timestamp que envió el Edge
+    let heartbeat_latency = now.saturating_sub(hb.timestamp_ms);
+    
     // NUEVA LÓGICA: Si el nodo no existe, lo creamos (Auto-registro)
     if let Some(health) = nodes.get_mut(&hb.node_id) {
         health.last_seen_ms = now;
         if !health.is_online {
             health.is_online = true;
-            println!("[RECUPERACIÓN] Nodo {} volvió vía heartbeat.", hb.node_id);
+            println!("[RECUPERACIÓN] Nodo {} volvió vía heartbeat (latencia: {}ms).", hb.node_id, heartbeat_latency);
+        } else {
+            // Mostrar latencia del heartbeat en cada recepción
+            println!("[HEARTBEAT] Recibido de {} - Latencia: {}ms", hb.node_id, heartbeat_latency);
         }
     } else {
-        println!("[REGISTRO] Nuevo nodo {} detectado vía heartbeat.", hb.node_id);
+        println!("[REGISTRO] Nuevo nodo {} detectado vía heartbeat (latencia: {}ms).", hb.node_id, heartbeat_latency);
         nodes.insert(hb.node_id.clone(), NodeHealth { 
             last_seen_ms: now, 
             is_online: true,
