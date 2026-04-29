@@ -130,9 +130,9 @@ async fn receive_report(
     *state.total_readings.lock().unwrap() += report.sample_count as u64;
     if report.anomaly_detected {
         *state.total_anomalies.lock().unwrap() += 1;
-        println!("[COORDINADOR] Reporte de anomalía recibido desde {}", report.edge_id);
+        println!("[COORDINADOR] Reporte de anomalía recibido desde {} - Latencia red: {}ms", report.edge_id, now.saturating_sub(report.timestamp_ms));
     } else {
-        println!("Reporte normal procesado desde {} ({} muestras)", report.edge_id, report.sample_count);
+        println!("[REPORTE] Recibido de {} ({} muestras) - Latencia red: {}ms", report.edge_id, report.sample_count, now.saturating_sub(report.timestamp_ms));
     }
 
     Json("Reporte procesado exitosamente")

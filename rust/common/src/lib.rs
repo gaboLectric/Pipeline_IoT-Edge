@@ -18,6 +18,7 @@ pub struct EdgeReport {
     pub sample_count: u32,
     pub latency_ms: u64,
     pub sequence_number: u64,
+    pub timestamp_ms: u64, // Momento en que el Edge envió el reporte (para medir latencia de red)
 }
 
 // Estado general que mantendrá el Coordinator en memoria

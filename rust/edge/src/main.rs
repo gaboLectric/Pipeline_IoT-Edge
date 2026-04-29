@@ -109,6 +109,7 @@ async fn main() {
 
             // 6. Generar número de secuencia y armar el reporte
             let sequence_number = bg_state.sequence_counter.fetch_add(1, Ordering::SeqCst);
+            let send_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
             let report = EdgeReport {
                 edge_id: bg_state.edge_id.clone(),
                 window_avg,
@@ -116,6 +117,7 @@ async fn main() {
                 sample_count: count,
                 latency_ms: avg_latency as u64,
                 sequence_number,
+                timestamp_ms: send_time,
             };
 
             println!("[Edge] Procesadas {} lecturas. Latencia prom: {}ms. Enviando...", 
