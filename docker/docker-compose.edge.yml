@@ -1,0 +1,74 @@
+# Docker Compose para Nodos Edge + Sensores
+#
+# Este archivo debe ejecutarse en CADA máquina del equipo (excepto el Hub)
+# Cada máquina ejecuta: 1 Edge + 2+ Sensores
+# Los servicios se comunican localmente; el Edge se conecta al Coordinator vía VPN
+#
+# Variables requeridas (ejemplo para máquina con IP 10.10.10.2):
+#   export COORDINATOR_IP=10.10.10.1
+#   export EDGE_ID=edge-node-2
+#   export EDGE_IP=10.10.10.2
+#
+# Uso:
+#   export COORDINATOR_IP=10.10.10.1
+#   export EDGE_ID=edge-node-2
+#   docker-compose -f docker-compose.edge.yml up --build
+
+version: '3.8'
+
+services:
+  edge:
+    build:
+      context: ../
+      dockerfile: docker/edge/Dockerfile
+    container_name: edge-processor
+    ports:
+      - "4000:4000"
+    environment:
+      - RUST_LOG=info
+      - EDGE_ID=${EDGE_ID:-edge-node-local}
+      - PORT=4000
+      # URL del Coordinator a través de VPN
+      - COORDINATOR_URL=http://${COORDINATOR_IP:-10.10.10.1}:3000/submit_report
+      - COORD_HB_URL=http://${COORDINATOR_IP:-10.10.10.1}:3000/heartbeat
+    cap_add:
+      - NET_ADMIN
+    depends_on:
+      - sensor-1
+      - sensor-2
+    networks:
+      - local-edge-network
+    restart: unless-stopped
+
+  sensor-1:
+    build:
+      context: ../
+      dockerfile: docker/sensor/Dockerfile
+    container_name: iot-sensor-1
+    environment:
+      - RUST_LOG=info
+      - SENSOR_ID=sensor-temp-1
+      # Los sensores envían a su Edge local (misma máquina)
+      - EDGE_URL=http://localhost:4000/reading
+    cap_add:
+      - NET_ADMIN
+    network_mode: host  # Comparte red con el host para localhost
+    restart: unless-stopped
+
+  sensor-2:
+    build:
+      context: ../
+      dockerfile: docker/sensor/Dockerfile
+    container_name: iot-sensor-2
+    environment:
+      - RUST_LOG=info
+      - SENSOR_ID=sensor-temp-2
+      - EDGE_URL=http://localhost:4000/reading
+    cap_add:
+      - NET_ADMIN
+    network_mode: host
+    restart: unless-stopped
+
+networks:
+  local-edge-network:
+    driver: bridge
