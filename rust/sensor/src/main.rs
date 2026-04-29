@@ -5,15 +5,15 @@ use tokio::time;
 
 #[tokio::main]
 async fn main() {
-    let sensor_id = "sensor-temp-1".to_string();
-    
-    // Para las pruebas locales, apuntaremos al Edge que correrá en nuestra misma máquina
-    let edge_url = "http://127.0.0.1:4000/reading".to_string();
-    
+    // Usamos variables de entorno para que Docker Compose pueda inyectar las IPs reales
+    let sensor_id = std::env::var("SENSOR_ID").expect("FALTA VARIABLE: SENSOR_ID");
+    let edge_url = std::env::var("EDGE_URL").expect("FALTA VARIABLE: EDGE_URL");
+
     println!("🌡️ Iniciando {}...", sensor_id);
     println!("📡 Enviando ráfagas de datos a {}", edge_url);
-    
+
     let client = reqwest::Client::new();
+
     // Configuramos el sensor para enviar 2 lecturas por segundo (cada 500ms)
     let mut interval = time::interval(Duration::from_millis(500));
     let mut rng = rand::thread_rng();

@@ -1,0 +1,52 @@
+# Configuración WireGuard para Cluster IoT/Edge
+# Red: 10.10.10.0/24
+#
+# Este archivo es un template. Cada máquina necesita su propia configuración:
+#   - Hub (Coordinator): 10.10.10.1
+#   - Edge 1: 10.10.10.2
+#   - Edge 2: 10.10.10.3
+#   - Edge N: 10.10.10.(N+1)
+#
+# Ver vpn/README.md para instrucciones completas de setup.
+
+# ============================================
+# CONFIGURACIÓN PARA EL HUB (Coordinator)
+# Ejecutar en: máquina con IP 10.10.10.1
+# ============================================
+[Interface]
+PrivateKey = # GENERAR: wg genkey > private.key
+Address = 10.10.10.1/24
+ListenPort = 51820
+# PublicKey del Hub: wg pubkey < private.key
+
+# Peer: Edge Node 1 (Máquina del integrante 1)
+[Peer]
+PublicKey = # CLAVE_PUBLICA_DEL_EDGE_1
+AllowedIPs = 10.10.10.2/32
+
+# Peer: Edge Node 2 (Máquina del integrante 2)
+[Peer]
+PublicKey = # CLAVE_PUBLICA_DEL_EDGE_2
+AllowedIPs = 10.10.10.3/32
+
+# Peer: Edge Node 3 (Máquina del integrante 3)
+[Peer]
+PublicKey = # CLAVE_PUBLICA_DEL_EDGE_3
+AllowedIPs = 10.10.10.4/32
+
+# Agregar más peers según el número de integrantes...
+
+
+# ============================================
+# CONFIGURACIÓN PARA EDGE NODES
+# Ejecutar en: máquinas de los integrantes (10.10.10.2, 10.10.10.3, etc.)
+# ============================================
+# [Interface]
+# PrivateKey = # GENERAR: wg genkey > private.key
+# Address = 10.10.10.X/32  # X = número asignado al integrante
+#
+# [Peer]
+# PublicKey = # CLAVE_PUBLICA_DEL_HUB
+# AllowedIPs = 10.10.10.0/24
+# Endpoint = # IP_PUBLICA_DEL_HUB:51820
+# PersistentKeepalive = 25
