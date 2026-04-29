@@ -1,0 +1,32 @@
+# Docker Compose para el Nodo Coordinator (Hub)
+# 
+# Este archivo debe ejecutarse SOLO en la máquina designada como Hub (Coordinator)
+# IP esperada en la VPN: 10.10.10.1
+#
+# Uso:
+#   docker-compose -f docker-compose.coordinator.yml up --build
+
+version: '3.8'
+
+services:
+  coordinator:
+    build:
+      context: ../
+      dockerfile: docker/coordinator/Dockerfile
+    container_name: coordinator
+    ports:
+      - "3000:3000"
+    environment:
+      - RUST_LOG=info
+      - PORT=3000
+      # El coordinator escucha en todas las interfaces para recibir conexiones VPN
+      - BIND_ADDRESS=0.0.0.0
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    networks:
+      - coordinator-network
+
+networks:
+  coordinator-network:
+    driver: bridge
