@@ -11,9 +11,8 @@ services:
     environment:
       - RUST_LOG=info
       - SENSOR_ID=sensor-temp-1
-      # Inyección de dependencias estricta sin IPs hardcodeadas
+      # Los sensores solo envían datos a su Edge local
       - EDGE_URL=http://edge:4000/reading
-      - COORD_HB_URL=http://coordinator:3000/heartbeat
     depends_on:
       - edge
     cap_add:
