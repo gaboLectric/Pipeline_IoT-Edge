@@ -4,7 +4,7 @@ use axum::{
 };
 use common::{EdgeReport, Heartbeat, CoordStatus};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 
@@ -29,6 +29,15 @@ fn edge_color(edge_id: &str) -> &'static str {
         hash = hash.wrapping_mul(31).wrapping_add(b as u64);
     }
     EDGE_COLORS[(hash % EDGE_COLORS.len() as u64) as usize]
+}
+
+/// Helper: obtener lock tolerante a poison (si un hilo paniquea, el Mutex
+/// queda "envenenado"; con esto recuperamos el estado en vez de crashear).
+fn safe_lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| {
+        eprintln!("[WARN] Mutex envenenado — recuperando estado");
+        poisoned.into_inner()
+    })
 }
 
 // Estructura interna para rastrear la salud de cada Edge
@@ -72,27 +81,28 @@ async fn main() {
         let timeout_ms = 10_000; // 10s sin señales = nodo caído
     
         loop {
-        interval.tick().await;
-        let now = current_time_ms();
-        let mut nodes = bg_state.edge_nodes.lock().unwrap();
+            interval.tick().await;
+            let now = current_time_ms();
+            let mut nodes = safe_lock(&bg_state.edge_nodes);
 
-        for (id, health) in nodes.iter_mut() {
-            // Solo alertar si realmente ha pasado el tiempo Y el nodo estaba online
-            if health.is_online {
-                let diff = now.saturating_sub(health.last_seen_ms);
-                if diff > timeout_ms {
-                    health.is_online = false;
-                    println!("{}[ALERTA] Falla detectada en {}. Sin señal por {} ms.{}", edge_color(id), id, diff, NC);
+            for (id, health) in nodes.iter_mut() {
+                // Solo alertar si realmente ha pasado el tiempo Y el nodo estaba online
+                if health.is_online {
+                    let diff = now.saturating_sub(health.last_seen_ms);
+                    if diff > timeout_ms {
+                        health.is_online = false;
+                        println!("{}[ALERTA] Falla detectada en {}. Sin señal por {} ms.{}", edge_color(id), id, diff, NC);
+                    }
                 }
             }
-        }
-    }
+        } // lock se libera aquí al salir del scope del loop body
     });
 
     // ---------------------------------------------------------
     // SERVIDOR AXUM
     // ---------------------------------------------------------
     let app = Router::new()
+        .route("/health", get(health_check))
         .route("/submit_report", post(receive_report))
         .route("/heartbeat", post(receive_heartbeat))
         .route("/status", get(get_status))
@@ -105,6 +115,11 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
+// 0. Endpoint de health check (para verificación rápida con curl)
+async fn health_check() -> Json<&'static str> {
+    Json("OK")
+}
+
 // 1. Endpoint para recibir los promedios del Edge
 async fn receive_report(
     State(state): State<Arc<AppState>>,
@@ -112,50 +127,60 @@ async fn receive_report(
 ) -> Json<&'static str> {
     
     let now = current_time_ms();
-    let mut nodes = state.edge_nodes.lock().unwrap();
-    
-    // Detección de Mensajes Perdidos
-    if let Some(health) = nodes.get_mut(&report.edge_id) {
-        health.last_seen_ms = now;
-        if !health.is_online {
-            println!("{}[RECUPERACIÓN] El nodo {} ha vuelto a conectarse.{}", edge_color(&report.edge_id), report.edge_id, NC);
-            health.is_online = true;
-        }
-        
-        // Verificamos si hubo salto de secuencia
-        if report.sequence_number > health.expected_seq && health.expected_seq > 0 {
-            let lost = report.sequence_number - health.expected_seq;
-            *state.lost_messages.lock().unwrap() += lost;
-            println!("{}[ADVERTENCIA] Se perdieron {} mensajes del nodo {}{}", edge_color(&report.edge_id), lost, report.edge_id, NC);
-        }
-        // Actualizamos la siguiente secuencia esperada
-        health.expected_seq = report.sequence_number + 1;
+    let net_latency = now.saturating_sub(report.timestamp_ms);
 
-    } else {
-        println!("{}[REGISTRO] Nuevo nodo Edge registrado: {}{}", edge_color(&report.edge_id), report.edge_id, NC);
-        nodes.insert(report.edge_id.clone(), NodeHealth { 
-            last_seen_ms: now, 
-            is_online: true,
-            expected_seq: report.sequence_number + 1 
-        });
+    // ── Bloque 1: edge_nodes (adquirir → usar → soltar) ──────────
+    let (active_edges, lost_count) = {
+        let mut nodes = safe_lock(&state.edge_nodes);
+        let mut lost: u64 = 0;
+
+        if let Some(health) = nodes.get_mut(&report.edge_id) {
+            health.last_seen_ms = now;
+            if !health.is_online {
+                println!("{}[RECUPERACIÓN] El nodo {} ha vuelto a conectarse.{}", edge_color(&report.edge_id), report.edge_id, NC);
+                health.is_online = true;
+            }
+            
+            // Verificamos si hubo salto de secuencia
+            if report.sequence_number > health.expected_seq && health.expected_seq > 0 {
+                lost = report.sequence_number - health.expected_seq;
+                println!("{}[ADVERTENCIA] Se perdieron {} mensajes del nodo {}{}", edge_color(&report.edge_id), lost, report.edge_id, NC);
+            }
+            // Actualizamos la siguiente secuencia esperada
+            health.expected_seq = report.sequence_number + 1;
+
+        } else {
+            println!("{}[REGISTRO] Nuevo nodo Edge registrado: {}{}", edge_color(&report.edge_id), report.edge_id, NC);
+            nodes.insert(report.edge_id.clone(), NodeHealth { 
+                last_seen_ms: now, 
+                is_online: true,
+                expected_seq: report.sequence_number + 1 
+            });
+        }
+
+        (nodes.len(), lost)
+    }; // ← edge_nodes lock se libera aquí
+
+    // ── Bloque 2: lost_messages (lock independiente) ─────────────
+    if lost_count > 0 {
+        *safe_lock(&state.lost_messages) += lost_count;
     }
 
-    // Registrar la latencia (limitamos a 1000 para no agotar la memoria)
+    // ── Bloque 3: latency_history (lock independiente) ───────────
     {
-        let mut history = state.latency_history.lock().unwrap();
+        let mut history = safe_lock(&state.latency_history);
         if history.len() >= 1000 {
             history.remove(0); // Eliminamos el más viejo si llegamos al límite
         }
         history.push(report.latency_ms);
     }
 
-    // Actualizar métricas globales
-    *state.total_readings.lock().unwrap() += report.sample_count as u64;
-    let net_latency = now.saturating_sub(report.timestamp_ms);
-    let active_edges = state.edge_nodes.lock().unwrap().len();
-    
+    // ── Bloque 4: total_readings (lock independiente) ────────────
+    *safe_lock(&state.total_readings) += report.sample_count as u64;
+
+    // ── Bloque 5: total_anomalies (lock independiente) ───────────
     if report.anomaly_detected {
-        *state.total_anomalies.lock().unwrap() += 1;
+        *safe_lock(&state.total_anomalies) += 1;
         println!("{}[ANOMALÍA] {} | Muestras: {} | Promedio: {:.1}°C | Latencia red: {}ms | Seq: {} | Edges activos: {}{}", 
             edge_color(&report.edge_id), report.edge_id, report.sample_count, report.window_avg, 
             net_latency, report.sequence_number, active_edges, NC);
@@ -174,17 +199,20 @@ async fn receive_heartbeat(
     Json(hb): Json<Heartbeat>,
 ) -> Json<&'static str> {
     let now = current_time_ms();
-    let mut nodes = state.edge_nodes.lock().unwrap();
     
     // Calcular latencia del heartbeat: tiempo actual - timestamp que envió el Edge
     let heartbeat_latency = now.saturating_sub(hb.timestamp_ms);
     
-    // NUEVA LÓGICA: Si el nodo no existe, lo creamos (Auto-registro)
+    // Un solo lock, se libera al final del scope
+    let mut nodes = safe_lock(&state.edge_nodes);
+
     if let Some(health) = nodes.get_mut(&hb.node_id) {
+        // Capturamos el tiempo offline ANTES de actualizar last_seen_ms
+        let offline_duration = now.saturating_sub(health.last_seen_ms);
         health.last_seen_ms = now;
+        
         if !health.is_online {
             health.is_online = true;
-            let offline_duration = now.saturating_sub(health.last_seen_ms);
             println!("{}[RECUPERACIÓN] {} | Estuvo offline: {}ms | Latencia red: {}ms | Rol: {} | Estado: ONLINE{}", 
                 edge_color(&hb.node_id), hb.node_id, offline_duration, heartbeat_latency, hb.role, NC);
         } else {
@@ -207,12 +235,15 @@ async fn receive_heartbeat(
 
 // 3. Endpoint de monitoreo de estado general
 async fn get_status(State(state): State<Arc<AppState>>) -> Json<CoordStatus> {
-    let nodes = state.edge_nodes.lock().unwrap();
-    let active_edges = nodes.values().filter(|h| h.is_online).count() as u32;
+    // Cada lock se adquiere y libera de forma independiente (sin solapar)
+    let active_edges = {
+        let nodes = safe_lock(&state.edge_nodes);
+        nodes.values().filter(|h| h.is_online).count() as u32
+    };
     
-    let total_r = *state.total_readings.lock().unwrap();
-    let total_a = *state.total_anomalies.lock().unwrap();
-    let lost_m = *state.lost_messages.lock().unwrap();
+    let total_r = *safe_lock(&state.total_readings);
+    let total_a = *safe_lock(&state.total_anomalies);
+    let lost_m = *safe_lock(&state.lost_messages);
     
     let uptime_s = (current_time_ms() - state.start_time_ms) / 1000;
     
@@ -233,7 +264,7 @@ async fn get_status(State(state): State<Arc<AppState>>) -> Json<CoordStatus> {
     let mut p50 = 0;
     let mut p99 = 0;
     
-    let mut lats = state.latency_history.lock().unwrap().clone();
+    let mut lats = safe_lock(&state.latency_history).clone();
     if !lats.is_empty() {
         lats.sort_unstable(); // Esencial ordenar para percentiles
         let len = lats.len() as f64;

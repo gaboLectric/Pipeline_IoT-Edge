@@ -48,11 +48,12 @@ services:
     environment:
       - RUST_LOG=info
       - SENSOR_ID=sensor-temp-1
-      # Los sensores envían a su Edge local (misma máquina)
-      - EDGE_URL=http://localhost:4000/reading
+      # Los sensores envían a su Edge local vía red Docker
+      - EDGE_URL=http://edge:4000/reading
     cap_add:
       - NET_ADMIN
-    network_mode: host  # Comparte red con el host para localhost
+    networks:
+      - local-edge-network
     restart: unless-stopped
 
   sensor-2:
@@ -63,10 +64,11 @@ services:
     environment:
       - RUST_LOG=info
       - SENSOR_ID=sensor-temp-2
-      - EDGE_URL=http://localhost:4000/reading
+      - EDGE_URL=http://edge:4000/reading
     cap_add:
       - NET_ADMIN
-    network_mode: host
+    networks:
+      - local-edge-network
     restart: unless-stopped
 
 networks:
