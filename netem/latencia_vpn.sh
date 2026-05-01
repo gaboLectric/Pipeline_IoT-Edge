@@ -1,5 +1,5 @@
 #!/bin/bash
-# Escenario Latencia IoT - delay 80ms jitter 20ms (Documento B)
+# Escenario Latencia IoT - delay 3000ms jitter 1000ms 25% (Documento B)
 # Uso: sudo ./latencia_vpn.sh [interfaz]
 
 YELLOW='\033[1;33m'
@@ -13,7 +13,7 @@ if ! ip link show "$INTERFACE" &> /dev/null; then
 fi
 
 tc qdisc del dev "$INTERFACE" root 2>/dev/null || true
-tc qdisc add dev "$INTERFACE" root netem delay 80ms 20ms distribution normal
+tc qdisc add dev "$INTERFACE" root netem delay 3000ms 1000ms 25%
 
-echo -e "${YELLOW}✓ Latencia 80ms ±20ms aplicada en $INTERFACE${NC}"
+echo -e "${YELLOW}✓ Latencia 3000ms ±1000ms (25% corr) aplicada en $INTERFACE${NC}"
 echo "  ping 10.10.10.1  # Verificar"
