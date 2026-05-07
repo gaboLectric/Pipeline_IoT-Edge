@@ -43,9 +43,11 @@ fn safe_lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 // Estructura interna para rastrear la salud de cada Edge
 #[derive(Debug, Clone)]
 struct NodeHealth {
+    first_seen_ms: u64,
     last_seen_ms: u64,
     is_online: bool,
     expected_seq: u64, // Para rastrear el siguiente mensaje esperado
+    reports_received: u64,
 }
 
 // El estado global del Coordinador
@@ -54,8 +56,9 @@ struct AppState {
     total_readings: Mutex<u64>,
     total_anomalies: Mutex<u32>,
     start_time_ms: u64,
-    latency_history: Mutex<Vec<u64>>, 
+    latency_history: Mutex<Vec<(u64, u64)>>, // (timestamp_ms, e2e_latency_ms)
     lost_messages: Mutex<u64>,
+    total_reports: Mutex<u64>,
 }
 
 #[tokio::main]
@@ -69,6 +72,7 @@ async fn main() {
         start_time_ms: current_time_ms(),
         latency_history: Mutex::new(Vec::with_capacity(1000)), // Evita realojamientos
         lost_messages: Mutex::new(0),
+        total_reports: Mutex::new(0),
     });
 
     let bg_state = state.clone();
@@ -96,6 +100,15 @@ async fn main() {
                 }
             }
         } // lock se libera aquí al salir del scope del loop body
+    });
+
+    let metrics_state = state.clone();
+    tokio::spawn(async move {
+        let mut interval = time::interval(Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            print_metrics(&metrics_state);
+        }
     });
 
     // ---------------------------------------------------------
@@ -128,6 +141,7 @@ async fn receive_report(
     
     let now = current_time_ms();
     let net_latency = now.saturating_sub(report.timestamp_ms);
+    let e2e_latency = report.latency_ms.saturating_add(net_latency);
 
     // ── Bloque 1: edge_nodes (adquirir → usar → soltar) ──────────
     let (active_edges, lost_count) = {
@@ -136,6 +150,7 @@ async fn receive_report(
 
         if let Some(health) = nodes.get_mut(&report.edge_id) {
             health.last_seen_ms = now;
+            health.reports_received = health.reports_received.saturating_add(1);
             if !health.is_online {
                 println!("{}[RECUPERACIÓN] El nodo {} ha vuelto a conectarse.{}", edge_color(&report.edge_id), report.edge_id, NC);
                 health.is_online = true;
@@ -152,9 +167,11 @@ async fn receive_report(
         } else {
             println!("{}[REGISTRO] Nuevo nodo Edge registrado: {}{}", edge_color(&report.edge_id), report.edge_id, NC);
             nodes.insert(report.edge_id.clone(), NodeHealth { 
+                first_seen_ms: now,
                 last_seen_ms: now, 
                 is_online: true,
-                expected_seq: report.sequence_number + 1 
+                expected_seq: report.sequence_number + 1,
+                reports_received: 1,
             });
         }
 
@@ -169,14 +186,19 @@ async fn receive_report(
     // ── Bloque 3: latency_history (lock independiente) ───────────
     {
         let mut history = safe_lock(&state.latency_history);
-        if history.len() >= 1000 {
-            history.remove(0); // Eliminamos el más viejo si llegamos al límite
+        history.push((now, e2e_latency));
+        let cutoff = now.saturating_sub(60_000);
+        while history.first().is_some_and(|(ts, _)| *ts < cutoff) {
+            history.remove(0);
         }
-        history.push(report.latency_ms);
+        if history.len() > 10_000 {
+            history.remove(0);
+        }
     }
 
     // ── Bloque 4: total_readings (lock independiente) ────────────
     *safe_lock(&state.total_readings) += report.sample_count as u64;
+    *safe_lock(&state.total_reports) += 1;
 
     // ── Bloque 5: total_anomalies (lock independiente) ───────────
     if report.anomaly_detected {
@@ -224,9 +246,11 @@ async fn receive_heartbeat(
         println!("{}[REGISTRO] Nuevo nodo: {} | Latencia inicial: {}ms | Rol: {} | Total de nodos en cluster: {}{}", 
             edge_color(&hb.node_id), hb.node_id, heartbeat_latency, hb.role, total_nodes, NC);
         nodes.insert(hb.node_id.clone(), NodeHealth { 
+            first_seen_ms: now,
             last_seen_ms: now, 
             is_online: true,
-            expected_seq: 0 
+            expected_seq: 0,
+            reports_received: 0,
         });
     }
     
@@ -260,11 +284,17 @@ async fn get_status(State(state): State<Arc<AppState>>) -> Json<CoordStatus> {
         0.0
     };
 
-    // Percentiles P50 y P99
+    // Percentiles P50 y P99 sobre ventana móvil de 60s
     let mut p50 = 0;
     let mut p99 = 0;
     
-    let mut lats = safe_lock(&state.latency_history).clone();
+    let now = current_time_ms();
+    let cutoff = now.saturating_sub(60_000);
+    let mut lats: Vec<u64> = safe_lock(&state.latency_history)
+        .iter()
+        .filter(|(ts, _)| *ts >= cutoff)
+        .map(|(_, lat)| *lat)
+        .collect();
     if !lats.is_empty() {
         lats.sort_unstable(); // Esencial ordenar para percentiles
         let len = lats.len() as f64;
@@ -295,4 +325,72 @@ async fn get_status(State(state): State<Arc<AppState>>) -> Json<CoordStatus> {
 // Función auxiliar
 fn current_time_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
+fn print_metrics(state: &Arc<AppState>) {
+    let now = current_time_ms();
+    let uptime_s = (now.saturating_sub(state.start_time_ms)) / 1000;
+    let total_reports = *safe_lock(&state.total_reports);
+    let total_readings = *safe_lock(&state.total_readings);
+    let total_anomalies = *safe_lock(&state.total_anomalies);
+    let lost_messages = *safe_lock(&state.lost_messages);
+
+    let throughput_total = if uptime_s > 0 {
+        total_reports as f64 / uptime_s as f64
+    } else {
+        0.0
+    };
+
+    let anomaly_rate = if total_readings > 0 {
+        (total_anomalies as f64 / total_readings as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let (throughput_per_edge, uptime_per_edge) = {
+        let nodes = safe_lock(&state.edge_nodes);
+        let mut per_edge_parts: Vec<String> = Vec::new();
+        let mut uptime_parts: Vec<String> = Vec::new();
+        for (id, health) in nodes.iter() {
+            let edge_uptime_s = now.saturating_sub(health.first_seen_ms) / 1000;
+            let edge_tp = if edge_uptime_s > 0 {
+                health.reports_received as f64 / edge_uptime_s as f64
+            } else {
+                0.0
+            };
+            per_edge_parts.push(format!("{}:{:.2}", id, edge_tp));
+            uptime_parts.push(format!("{}:{}", id, edge_uptime_s));
+        }
+        per_edge_parts.sort();
+        uptime_parts.sort();
+        (per_edge_parts.join(", "), uptime_parts.join(", "))
+    };
+
+    let (lat_e2e_avg, p50, p99) = {
+        let history = safe_lock(&state.latency_history);
+        let cutoff = now.saturating_sub(60_000);
+        let mut vals: Vec<u64> = history
+            .iter()
+            .filter(|(ts, _)| *ts >= cutoff)
+            .map(|(_, lat)| *lat)
+            .collect();
+        if vals.is_empty() {
+            (0, 0, 0)
+        } else {
+            let sum: u128 = vals.iter().map(|v| *v as u128).sum();
+            let avg = (sum / vals.len() as u128) as u64;
+            vals.sort_unstable();
+            let len = vals.len();
+            let idx_50 = ((len as f64 * 0.50).ceil() as usize).saturating_sub(1);
+            let idx_99 = ((len as f64 * 0.99).ceil() as usize).saturating_sub(1);
+            (avg, vals[idx_50], vals[idx_99])
+        }
+    };
+
+    println!("Throughput | total:{:.2}; por_edge:[{}] | msg/s", throughput_total, throughput_per_edge);
+    println!("Latencia E2E | promedio_60s:{} | ms", lat_e2e_avg);
+    println!("Latencia P50 / P99 | P50:{}; P99:{} (ventana 60s) | ms", p50, p99);
+    println!("Tasa de anomalías | {:.2} | %", anomaly_rate);
+    println!("Uptime por nodo | {} | s", uptime_per_edge);
+    println!("Mensajes perdidos | {} | count", lost_messages);
 }
