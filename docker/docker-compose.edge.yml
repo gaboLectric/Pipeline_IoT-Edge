@@ -33,9 +33,6 @@ services:
       - COORD_HB_URL=http://${COORDINATOR_IP:-10.10.10.1}:3000/heartbeat
     cap_add:
       - NET_ADMIN
-    depends_on:
-      - sensor-1
-      - sensor-2
     networks:
       - local-edge-network
     restart: unless-stopped
@@ -50,6 +47,8 @@ services:
       - SENSOR_ID=sensor-temp-1
       # Los sensores envían a su Edge local vía red Docker
       - EDGE_URL=http://edge:4000/reading
+    depends_on:
+      - edge
     cap_add:
       - NET_ADMIN
     networks:
@@ -65,6 +64,8 @@ services:
       - RUST_LOG=info
       - SENSOR_ID=sensor-temp-2
       - EDGE_URL=http://edge:4000/reading
+    depends_on:
+      - edge
     cap_add:
       - NET_ADMIN
     networks:
